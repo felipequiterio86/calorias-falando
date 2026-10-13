@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16a34a">
+  <title>Calorias Falando</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- LOGIN / CADASTRO -->
+<section id="s-auth" class="screen" hidden>
+  <div class="card narrow">
+    <h1>🥗 Calorias Falando</h1>
+    <p class="muted">Fale o que você comeu e o peso. Nós calculamos as calorias.</p>
+    <form id="form-auth">
+      <label>E-mail <input type="email" id="auth-email" required autocomplete="email"></label>
+      <label>Senha <input type="password" id="auth-pass" required minlength="6" autocomplete="current-password"></label>
+      <button type="submit" class="btn primary" data-mode="login">Entrar</button>
+      <button type="button" id="btn-signup" class="btn">Criar conta</button>
+    </form>
+    <p id="auth-msg" class="msg"></p>
+  </div>
+</section>
+
+<!-- CADASTRO INICIAL / PERFIL -->
+<section id="s-profile" class="screen" hidden>
+  <div class="card narrow">
+    <h2>Seus dados</h2>
+    <form id="form-profile">
+      <div class="row">
+        <label>Peso (kg) <input type="number" id="p-weight" step="0.1" min="20" max="400" required></label>
+        <label>Altura (cm) <input type="number" id="p-height" step="1" min="100" max="250" required></label>
+      </div>
+      <div class="row">
+        <label>Idade <input type="number" id="p-age" min="10" max="110" required></label>
+        <label>Sexo
+          <select id="p-sex" required>
+            <option value="">Selecione</option>
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="check"><input type="checkbox" id="p-manual"> Quero informar IMC e TMB manualmente</label>
+      <div id="manual-box" hidden>
+        <p class="tip">💡 Para valores mais precisos, meça em uma <b>balança de bioimpedância</b> (ela informa o IMC e a taxa metabólica basal) e digite aqui.</p>
+        <div class="row">
+          <label>IMC <input type="number" id="p-imc" step="0.1" min="8" max="80"></label>
+          <label>TMB (kcal/dia) <input type="number" id="p-tmb" step="1" min="500" max="5000"></label>
+        </div>
+      </div>
+      <div id="calc-box" class="calc"></div>
+      <button type="submit" class="btn primary">Salvar</button>
+      <button type="button" id="btn-profile-cancel" class="btn" hidden>Cancelar</button>
+    </form>
+    <p id="profile-msg" class="msg"></p>
+  </div>
+</section>
+
+<!-- APP PRINCIPAL -->
+<main id="s-app" class="screen" hidden>
+  <header class="topbar">
+    <div class="brand">🥗 Calorias Falando</div>
+    <nav class="tabs">
+      <button data-tab="today" class="active">Hoje</button>
+      <button data-tab="reports">Fechamentos</button>
+      <button data-tab="me">Perfil</button>
+    </nav>
+  </header>
+
+  <!-- HOJE -->
+  <section id="tab-today" class="tab">
+    <div class="card summary">
+      <div class="muted" id="today-date"></div>
+      <div class="big"><span id="today-total">0</span> <small>kcal hoje</small></div>
+      <div class="bar"><div id="today-bar"></div></div>
+      <div class="muted" id="today-ref"></div>
+    </div>
+
+    <div class="card">
+      <button id="btn-mic" class="mic" type="button" aria-label="Falar refeição">🎤</button>
+      <p class="center muted" id="mic-status">Toque no microfone e fale. Ex.: “150 gramas de arroz, 100 gramas de frango grelhado e 50 gramas de feijão”</p>
+      <textarea id="meal-text" rows="3" placeholder="Ou digite aqui o que você comeu e o peso..."></textarea>
+      <button id="btn-calc" class="btn primary" type="button">Calcular calorias</button>
+      <p id="meal-msg" class="msg"></p>
+    </div>
+
+    <h3>Refeições de hoje</h3>
+    <div id="meal-list" class="list"></div>
+  </section>
+
+  <!-- FECHAMENTOS -->
+  <section id="tab-reports" class="tab" hidden>
+    <div class="seg">
+      <button data-period="week" class="active">Semana</button>
+      <button data-period="month">Mês</button>
+      <button data-period="year">Ano</button>
+    </div>
+    <div class="nav-range">
+      <button id="range-prev" class="btn small">◀</button>
+      <strong id="range-label"></strong>
+      <button id="range-next" class="btn small">▶</button>
+    </div>
+    <div class="stats" id="report-stats"></div>
+    <div class="card"><div id="report-chart" class="chart"></div></div>
+    <h3>Detalhe</h3>
+    <div id="report-list" class="list"></div>
+  </section>
+
+  <!-- PERFIL -->
+  <section id="tab-me" class="tab" hidden>
+    <div class="card">
+      <h3>Meu perfil</h3>
+      <div id="me-info"></div>
+      <button id="btn-edit-profile" class="btn">Editar dados</button>
+      <button id="btn-logout" class="btn danger">Sair</button>
+    </div>
+    <p class="muted center small-text">Em breve: integração com Google Fit, Samsung Health e FitDay.</p>
+  </section>
+</main>
+
+<!-- CONFIRMAÇÃO DA REFEIÇÃO -->
+<div id="modal" class="modal" hidden>
+  <div class="modal-box">
+    <h3>Confirmar refeição</h3>
+    <p class="muted" id="modal-text"></p>
+    <div id="modal-items" class="list"></div>
+    <div class="big center"><span id="modal-total">0</span> <small>kcal</small></div>
+    <div class="row">
+      <button id="modal-cancel" class="btn">Cancelar</button>
+      <button id="modal-save" class="btn primary">Salvar no diário</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
