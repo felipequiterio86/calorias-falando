@@ -244,12 +244,22 @@ async function loadToday() {
       <div>
         <div class="t">${hhmm(m.eaten_at)}</div>
         <div class="d">${(m.items || []).map((i) => `${esc(i.name)} <small>${i.grams}g · ${i.kcal} kcal${i.estimated ? " (estimado)" : ""}</small>`).join("<br>") || esc(m.description)}</div>
-        <button class="del" data-id="${m.id}">Excluir</button>
+        <button class="edit" data-id="${m.id}">Editar</button> <button class="del" data-id="${m.id}">Excluir</button>
       </div>
       <div class="k">${fmt(m.total_kcal)} kcal</div>
     </div>`
     )
     .join("");
+  $$("#meal-list .edit").forEach((b) =>
+    b.addEventListener("click", () => {
+      const m = meals.find((x) => String(x.id) === b.dataset.id);
+      if (!m) return;
+      const items = (m.items || []).map((i) => ({ ...i }));
+      if (!items.length) items.push({ name: m.description || "", grams: 100, kcal: m.total_kcal || 0, protein_g: 0, carbs_g: 0, fat_g: 0, estimated: false });
+      pending = { id: m.id, text: "", items, total: m.total_kcal };
+      openModal();
+    })
+  );
   $$("#meal-list .del").forEach((b) =>
     b.addEventListener("click", async () => {
       if (!confirm("Excluir esta refeição do diário?")) return;
@@ -260,67 +270,70 @@ async function loadToday() {
   );
 }
 
-// ---------- voz ----------
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null;
-let recording = false;
+// ---------- voz (grava o áudio e o Gemini entende direto) ----------
 const micBtn = $("#btn-mic");
 const micStatus = $("#mic-status");
 const mealText = $("#meal-text");
 const micDefault = micStatus.textContent;
+let mediaRec = null, chunks = [], stream = null, recTimer = null;
 
-if (!SR) {
-  micBtn.disabled = true;
-  micBtn.style.opacity = 0.4;
-  micStatus.textContent = "Seu navegador não suporta reconhecimento de voz. Digite abaixo (ou use o microfone do teclado do celular).";
-} else {
-  rec = new SR();
-  rec.lang = "pt-BR";
-  rec.interimResults = true;
-  rec.continuous = true;
-  let base = "";
-  rec.onstart = () => {
-    recording = true;
-    base = mealText.value ? mealText.value.trim() + " " : "";
-    micBtn.classList.add("rec");
-    micStatus.textContent = "Ouvindo... fale o alimento e o peso. Toque de novo para parar.";
-  };
-  rec.onresult = (e) => {
-    let t = "";
-    for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-    mealText.value = base + t;
-  };
-  rec.onerror = (e) => {
-    const m = { "not-allowed": "Permita o uso do microfone no navegador.", "no-speech": "Não ouvi nada. Tente de novo." };
-    setMsg($("#meal-msg"), m[e.error] || "Erro no microfone: " + e.error);
-  };
-  rec.onend = () => {
-    recording = false;
-    micBtn.classList.remove("rec");
-    micStatus.textContent = micDefault;
-    if (mealText.value.trim().length > 2) calculate(); // calcula assim que parar de falar
-  };
-  micBtn.addEventListener("click", () => {
-    setMsg($("#meal-msg"), "");
-    try {
-      recording ? rec.stop() : rec.start();
-    } catch (_) {}
+function blobToBase64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1]);
+    r.onerror = rej;
+    r.readAsDataURL(blob);
   });
 }
 
-// ---------- calcular calorias ----------
-$("#btn-calc").addEventListener("click", calculate);
+async function startRec() {
+  setMsg($("#meal-msg"), "");
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    return setMsg($("#meal-msg"), "Gravação não suportada aqui. Digite abaixo.");
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (_) {
+    return setMsg($("#meal-msg"), "Permita o uso do microfone no navegador.");
+  }
+  chunks = [];
+  mediaRec = new MediaRecorder(stream);
+  mediaRec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  mediaRec.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    clearTimeout(recTimer);
+    micBtn.classList.remove("rec");
+    micStatus.textContent = micDefault;
+    const blob = new Blob(chunks, { type: mediaRec.mimeType || "audio/webm" });
+    if (blob.size < 1500) return setMsg($("#meal-msg"), "Não ouvi nada. Tente de novo.");
+    const mime = (blob.type || "audio/webm").split(";")[0];
+    calculate({ audio: await blobToBase64(blob), mime });
+  };
+  mediaRec.start();
+  micBtn.classList.add("rec");
+  micStatus.textContent = "Gravando... fale o alimento e o peso. Toque de novo para terminar.";
+  recTimer = setTimeout(() => mediaRec.state === "recording" && mediaRec.stop(), 60000);
+}
 
-async function calculate() {
+micBtn.addEventListener("click", () => {
+  if (mediaRec && mediaRec.state === "recording") mediaRec.stop();
+  else startRec();
+});
+
+// ---------- calcular calorias ----------
+$("#btn-calc").addEventListener("click", () => calculate());
+
+async function calculate(audioPayload) {
+  const isAudio = audioPayload && audioPayload.audio;
   const text = mealText.value.trim();
   const msg = $("#meal-msg");
-  if (text.length < 2) return setMsg(msg, "Fale ou digite o que você comeu.");
+  if (!isAudio && text.length < 2) return setMsg(msg, "Fale ou digite o que você comeu.");
   const btn = $("#btn-calc");
   btn.disabled = true;
   btn.textContent = "Calculando...";
   setMsg(msg, "");
   try {
-    const { data, error } = await sb.functions.invoke("parse-meal", { body: { text } });
+    const { data, error } = await sb.functions.invoke("parse-meal", { body: isAudio ? audioPayload : { text } });
     if (error) {
       let detail = error.message;
       try {
@@ -330,7 +343,7 @@ async function calculate() {
       throw new Error(detail);
     }
     if (data?.error) throw new Error(data.error);
-    pending = { text, items: data.items, total: data.total_kcal };
+    pending = { text: data.transcript || text, items: data.items, total: data.total_kcal };
     openModal();
   } catch (e) {
     setMsg(msg, e.message);
@@ -340,39 +353,92 @@ async function calculate() {
   }
 }
 
-function openModal() {
-  $("#modal-text").textContent = `“${pending.text}”`;
-  $("#modal-items").innerHTML = pending.items
+function recalcTotal() {
+  pending.total = pending.items.reduce((s, i) => s + (Number(i.kcal) || 0), 0);
+  $("#modal-total").textContent = fmt(pending.total);
+}
+
+function renderModalItems() {
+  const box = $("#modal-items");
+  box.innerHTML = pending.items
     .map(
-      (i) => `<div class="item"><div><div class="d"><b>${esc(i.name)}</b></div>
-      <div class="t">${i.grams} g · P ${i.protein_g}g · C ${i.carbs_g}g · G ${i.fat_g}g${i.estimated ? " · peso estimado" : ""}</div></div>
-      <div class="k">${i.kcal} kcal</div></div>`
+      (i, n) => `<div class="edit-item" data-n="${n}">
+      <input class="e-name" value="${esc(i.name)}" placeholder="Alimento" aria-label="Alimento">
+      <div class="e-row">
+        <label>g <input class="e-grams" type="number" inputmode="decimal" min="0" step="1" value="${i.grams}"></label>
+        <label>kcal <input class="e-kcal" type="number" inputmode="decimal" min="0" step="1" value="${i.kcal}"></label>
+        <button type="button" class="e-del" aria-label="Remover item">✕</button>
+      </div>
+      <div class="t">P ${i.protein_g}g · C ${i.carbs_g}g · G ${i.fat_g}g${i.estimated ? " · peso estimado" : ""}</div>
+    </div>`
     )
     .join("");
-  $("#modal-total").textContent = fmt(pending.total);
+  if (!pending.items.length) box.innerHTML = '<div class="empty">Sem itens. Adicione um abaixo.</div>';
+  $$("#modal-items .edit-item").forEach((row) => {
+    const it = pending.items[Number(row.dataset.n)];
+    row.querySelector(".e-name").addEventListener("input", (e) => (it.name = e.target.value));
+    // mudar o peso recalcula kcal e macros na mesma proporção
+    row.querySelector(".e-grams").addEventListener("input", (e) => {
+      const g = Math.max(0, Number(e.target.value) || 0);
+      if (it.grams > 0) {
+        const f = g / it.grams;
+        it.kcal = Math.round(it.kcal * f);
+        it.protein_g = Math.round(it.protein_g * f * 10) / 10;
+        it.carbs_g = Math.round(it.carbs_g * f * 10) / 10;
+        it.fat_g = Math.round(it.fat_g * f * 10) / 10;
+        row.querySelector(".e-kcal").value = it.kcal;
+        row.querySelector(".t").textContent = `P ${it.protein_g}g · C ${it.carbs_g}g · G ${it.fat_g}g`;
+      }
+      it.grams = g;
+      it.estimated = false;
+      recalcTotal();
+    });
+    row.querySelector(".e-kcal").addEventListener("input", (e) => {
+      it.kcal = Math.max(0, Math.round(Number(e.target.value) || 0));
+      recalcTotal();
+    });
+    row.querySelector(".e-del").addEventListener("click", () => {
+      pending.items.splice(Number(row.dataset.n), 1);
+      renderModalItems();
+    });
+  });
+  recalcTotal();
+}
+
+function openModal() {
+  $("#modal-title").textContent = pending.id ? "Editar refeição" : "Confirmar refeição";
+  $("#modal-text").textContent = pending.text ? `“${pending.text}”` : "";
+  $("#modal-save").textContent = pending.id ? "Salvar alterações" : "Salvar no diário";
+  renderModalItems();
   $("#modal").hidden = false;
 }
+$("#modal-add").addEventListener("click", () => {
+  pending.items.push({ name: "", grams: 100, kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, estimated: false });
+  renderModalItems();
+});
 $("#modal-cancel").addEventListener("click", () => {
   pending = null;
   $("#modal").hidden = true;
 });
 $("#modal-save").addEventListener("click", async () => {
   if (!pending) return;
+  pending.items = pending.items.filter((i) => (i.name || "").trim() || i.kcal > 0);
+  pending.items.forEach((i) => (i.name = (i.name || "").trim() || "Item"));
+  if (!pending.items.length) return alert("Adicione pelo menos um item.");
+  recalcTotal();
   const btn = $("#modal-save");
   btn.disabled = true;
-  const { error } = await sb.from("meals").insert({
-    user_id: user.id,
-    eaten_at: new Date().toISOString(),
-    description: pending.text,
-    total_kcal: pending.total,
-    items: pending.items,
-  });
+  const fields = { description: pending.text || pending.items.map((i) => i.name).join(", "), total_kcal: pending.total, items: pending.items };
+  const { error } = pending.id
+    ? await sb.from("meals").update(fields).eq("id", pending.id)
+    : await sb.from("meals").insert({ user_id: user.id, eaten_at: new Date().toISOString(), ...fields });
   btn.disabled = false;
   if (error) return alert("Erro ao salvar: " + error.message);
+  const edited = !!pending.id;
   pending = null;
   $("#modal").hidden = true;
   mealText.value = "";
-  setMsg($("#meal-msg"), "Refeição salva no diário ✔", true);
+  setMsg($("#meal-msg"), edited ? "Refeição atualizada ✔" : "Refeição salva no diário ✔", true);
   loadToday();
 });
 

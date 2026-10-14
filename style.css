@@ -82,3 +82,11 @@ textarea{resize:vertical}
 .modal{position:fixed;inset:0;background:#000a;display:flex;align-items:flex-end;justify-content:center;z-index:20}
 .modal-box{background:var(--card);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px;max-height:88vh;overflow:auto}
 @media(min-width:600px){.modal{align-items:center}.modal-box{border-radius:20px}}
+
+.item .edit{background:none;border:0;color:var(--green,#16a34a);cursor:pointer;font-size:.8rem;padding:0;margin-top:4px}
+.edit-item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.edit-item input{width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;font-size:1rem}
+.e-row{display:flex;gap:8px;align-items:flex-end}
+.e-row label{flex:1;font-size:.8rem;color:var(--muted)}
+.e-del{background:none;border:1px solid var(--line);color:var(--red);border-radius:8px;padding:8px 12px;cursor:pointer}
+#modal-add{margin:8px 0}
