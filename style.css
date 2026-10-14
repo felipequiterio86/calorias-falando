@@ -90,3 +90,7 @@ textarea{resize:vertical}
 .e-row label{flex:1;font-size:.8rem;color:var(--muted)}
 .e-del{background:none;border:1px solid var(--line);color:var(--red);border-radius:8px;padding:8px 12px;cursor:pointer}
 #modal-add{margin:8px 0}
+
+.install{display:block;margin:12px auto 0;background:none;border:1px dashed var(--line);color:var(--muted);border-radius:999px;padding:8px 14px;font-size:.85rem;cursor:pointer}
+.install:hover{color:inherit;border-color:var(--muted)}
+.install-tip{font-size:.85rem;color:var(--muted);text-align:center;margin:8px 0 0}

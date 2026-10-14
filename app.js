@@ -576,3 +576,47 @@ async function loadReport() {
   if (!data.session) showScreen("s-auth");
   // se houver sessão, onAuthStateChange (INITIAL_SESSION) cuida do resto
 })();
+
+
+// ---------- atalho na tela inicial do celular ----------
+(function () {
+  const btns = $$(".install");
+  const tips = $$(".install-tip");
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  if (standalone || !btns.length) return; // já está instalado
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  let deferred = null;
+  const show = () => btns.forEach((b) => (b.hidden = false));
+  const hide = () => {
+    btns.forEach((b) => (b.hidden = true));
+    tips.forEach((t) => (t.hidden = true));
+  };
+  const tipText = (t) => tips.forEach((p) => { p.textContent = t; p.hidden = false; });
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferred = e;
+    show();
+  });
+  window.addEventListener("appinstalled", hide);
+
+  if (isIOS) show(); // iPhone não tem botão automático: mostramos o passo a passo ao tocar
+
+  btns.forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (deferred) {
+        deferred.prompt();
+        await deferred.userChoice.catch(() => {});
+        deferred = null;
+        hide();
+      } else if (isIOS) {
+        tipText("No iPhone, abra no Safari, toque em Compartilhar (quadrado com seta) e depois em “Adicionar à Tela de Início”.");
+      } else {
+        tipText("Toque nos 3 pontinhos do navegador (⋮) e escolha “Instalar app” ou “Adicionar à tela inicial”.");
+      }
+    })
+  );
+
+  // Se o navegador não ofereceu a instalação em alguns segundos (ex.: Firefox, Chrome sem suporte), ainda mostramos o botão com instruções.
+  setTimeout(() => { if (!deferred && btns[0].hidden) show(); }, 4000);
+})();
