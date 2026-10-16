@@ -256,7 +256,7 @@ async function loadToday() {
       if (!m) return;
       const items = (m.items || []).map((i) => ({ ...i }));
       if (!items.length) items.push({ name: m.description || "", grams: 100, kcal: m.total_kcal || 0, protein_g: 0, carbs_g: 0, fat_g: 0, estimated: false });
-      pending = { id: m.id, text: "", items, total: m.total_kcal };
+      pending = { id: m.id, text: "", items, total: m.total_kcal, eaten_at: m.eaten_at };
       openModal();
     })
   );
@@ -377,15 +377,17 @@ function renderModalItems() {
   $$("#modal-items .edit-item").forEach((row) => {
     const it = pending.items[Number(row.dataset.n)];
     row.querySelector(".e-name").addEventListener("input", (e) => (it.name = e.target.value));
-    // mudar o peso recalcula kcal e macros na mesma proporção
+    // base de referência: kcal e macros por peso original (não se perde ao apagar o campo)
+    if (!it._b) it._b = { g: it.grams, k: it.kcal, p: it.protein_g, c: it.carbs_g, f: it.fat_g };
     row.querySelector(".e-grams").addEventListener("input", (e) => {
       const g = Math.max(0, Number(e.target.value) || 0);
-      if (it.grams > 0) {
-        const f = g / it.grams;
-        it.kcal = Math.round(it.kcal * f);
-        it.protein_g = Math.round(it.protein_g * f * 10) / 10;
-        it.carbs_g = Math.round(it.carbs_g * f * 10) / 10;
-        it.fat_g = Math.round(it.fat_g * f * 10) / 10;
+      const b = it._b;
+      if (b.g > 0) {
+        const f = g / b.g;
+        it.kcal = Math.round(b.k * f);
+        it.protein_g = Math.round(b.p * f * 10) / 10;
+        it.carbs_g = Math.round(b.c * f * 10) / 10;
+        it.fat_g = Math.round(b.f * f * 10) / 10;
         row.querySelector(".e-kcal").value = it.kcal;
         row.querySelector(".t").textContent = `P ${it.protein_g}g · C ${it.carbs_g}g · G ${it.fat_g}g`;
       }
@@ -395,6 +397,8 @@ function renderModalItems() {
     });
     row.querySelector(".e-kcal").addEventListener("input", (e) => {
       it.kcal = Math.max(0, Math.round(Number(e.target.value) || 0));
+      // se a pessoa corrigiu as kcal na mão, a nova referência passa a ser esse valor para o peso atual
+      if (it.grams > 0) it._b = { g: it.grams, k: it.kcal, p: it.protein_g, c: it.carbs_g, f: it.fat_g };
       recalcTotal();
     });
     row.querySelector(".e-del").addEventListener("click", () => {
@@ -409,6 +413,7 @@ function openModal() {
   $("#modal-title").textContent = pending.id ? "Editar refeição" : "Confirmar refeição";
   $("#modal-text").textContent = pending.text ? `“${pending.text}”` : "";
   $("#modal-save").textContent = pending.id ? "Salvar alterações" : "Salvar no diário";
+  $("#modal-when").value = toLocalInput(new Date(pending.eaten_at || Date.now()));
   renderModalItems();
   $("#modal").hidden = false;
 }
@@ -423,15 +428,17 @@ $("#modal-cancel").addEventListener("click", () => {
 $("#modal-save").addEventListener("click", async () => {
   if (!pending) return;
   pending.items = pending.items.filter((i) => (i.name || "").trim() || i.kcal > 0);
-  pending.items.forEach((i) => (i.name = (i.name || "").trim() || "Item"));
+  pending.items = pending.items.map(({ _b, ...rest }) => ({ ...rest, name: (rest.name || "").trim() || "Item" }));
   if (!pending.items.length) return alert("Adicione pelo menos um item.");
   recalcTotal();
   const btn = $("#modal-save");
   btn.disabled = true;
-  const fields = { description: pending.text || pending.items.map((i) => i.name).join(", "), total_kcal: pending.total, items: pending.items };
+  const whenVal = $("#modal-when").value;
+  const eatenAt = whenVal && !isNaN(new Date(whenVal)) ? new Date(whenVal).toISOString() : pending.eaten_at || new Date().toISOString();
+  const fields = { eaten_at: eatenAt, description: pending.text || pending.items.map((i) => i.name).join(", "), total_kcal: pending.total, items: pending.items };
   const { error } = pending.id
     ? await sb.from("meals").update(fields).eq("id", pending.id)
-    : await sb.from("meals").insert({ user_id: user.id, eaten_at: new Date().toISOString(), ...fields });
+    : await sb.from("meals").insert({ user_id: user.id, ...fields });
   btn.disabled = false;
   if (error) return alert("Erro ao salvar: " + error.message);
   const edited = !!pending.id;
@@ -439,7 +446,7 @@ $("#modal-save").addEventListener("click", async () => {
   $("#modal").hidden = true;
   mealText.value = "";
   setMsg($("#meal-msg"), edited ? "Refeição atualizada ✔" : "Refeição salva no diário ✔", true);
-  loadToday();
+  refreshViews();
 });
 
 // ---------- fechamentos (semana / mês / ano) ----------
@@ -564,10 +571,91 @@ async function loadReport() {
         const diff = g.total - tmb;
         note = diff > 0 ? `${fmt(diff)} acima da TMB` : `${fmt(-diff)} abaixo da TMB`;
       }
-      return `<div class="item"><div><div class="d"><b>${esc(g.long || g.label)}</b></div><div class="t">${note}</div></div><div class="k">${fmt(g.total)} kcal</div></div>`;
+      const click = period !== "year";
+      return `<div class="item${click ? " clickable" : ""}" ${click ? `data-key="${g.key}"` : ""}><div><div class="d"><b>${esc(g.long || g.label)}</b></div><div class="t">${note}</div>${click ? '<div class="go">Toque para ver e editar ›</div>' : ""}</div><div class="k">${fmt(g.total)} kcal</div></div>`;
     })
     .join("");
+  $$("#report-list .item.clickable").forEach((el) => el.addEventListener("click", () => showDay(el.dataset.key)));
 }
+
+
+// ---------- editar dias anteriores ----------
+const toLocalInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+let openDay = null; // "YYYY-MM-DD" do dia aberto no detalhe
+
+function refreshViews() {
+  loadToday();
+  if (!$("#tab-reports").hidden) loadReport();
+  if (openDay) showDay(openDay);
+}
+
+async function showDay(key) {
+  openDay = key;
+  const [y, m, d] = key.split("-").map(Number);
+  const from = new Date(y, m - 1, d);
+  $("#day-title").textContent = `${DIAS[from.getDay()]}, ${pad(d)}/${pad(m)}/${y}`;
+  const list = $("#day-list");
+  let meals = [];
+  try {
+    meals = await fetchMeals(from, addDays(from, 1));
+  } catch (e) {
+    list.innerHTML = `<div class="empty">Erro: ${esc(e.message)}</div>`;
+    $("#day-modal").hidden = false;
+    return;
+  }
+  const total = meals.reduce((s, x) => s + Number(x.total_kcal), 0);
+  $("#day-title").textContent += ` · ${fmt(total)} kcal`;
+  list.innerHTML = meals.length
+    ? meals
+        .map(
+          (x) => `<div class="item"><div>
+        <div class="t">${hhmm(x.eaten_at)}</div>
+        <div class="d">${(x.items || []).map((i) => `${esc(i.name)} <small>${i.grams}g · ${i.kcal} kcal</small>`).join("<br>") || esc(x.description)}</div>
+        <button class="edit" data-id="${x.id}">Editar</button> <button class="del" data-id="${x.id}">Excluir</button>
+      </div><div class="k">${fmt(x.total_kcal)} kcal</div></div>`
+        )
+        .join("")
+    : '<div class="empty">Nenhuma refeição neste dia.</div>';
+  $$("#day-list .edit").forEach((b) =>
+    b.addEventListener("click", () => {
+      const x = meals.find((r) => String(r.id) === b.dataset.id);
+      if (!x) return;
+      const items = (x.items || []).map((i) => ({ ...i }));
+      if (!items.length) items.push({ name: x.description || "", grams: 100, kcal: x.total_kcal || 0, protein_g: 0, carbs_g: 0, fat_g: 0, estimated: false });
+      pending = { id: x.id, text: "", items, total: x.total_kcal, eaten_at: x.eaten_at };
+      openModal();
+    })
+  );
+  $$("#day-list .del").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Excluir esta refeição do diário?")) return;
+      const { error } = await sb.from("meals").delete().eq("id", b.dataset.id);
+      if (error) return alert("Erro ao excluir: " + error.message);
+      refreshViews();
+    })
+  );
+  $("#day-modal").hidden = false;
+}
+
+function newMealAt(date) {
+  pending = { text: "", items: [{ name: "", grams: 100, kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, estimated: false }], total: 0, eaten_at: date.toISOString() };
+  openModal();
+}
+$("#day-close").addEventListener("click", () => {
+  openDay = null;
+  $("#day-modal").hidden = true;
+  if (!$("#tab-reports").hidden) loadReport();
+});
+$("#day-add").addEventListener("click", () => {
+  const [y, m, d] = openDay.split("-").map(Number);
+  const now = new Date();
+  newMealAt(new Date(y, m - 1, d, now.getHours(), now.getMinutes()));
+});
+$("#btn-add-other").addEventListener("click", () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1); // começa em ontem; dá para mudar a data no campo
+  newMealAt(d);
+});
 
 // ---------- início ----------
 (async function init() {

@@ -113,6 +113,7 @@
       <button id="range-next" class="btn small">▶</button>
     </div>
     <div class="stats" id="report-stats"></div>
+    <button id="btn-add-other" class="btn small" type="button">+ Registrar refeição em outro dia</button>
     <div class="card"><div id="report-chart" class="chart"></div></div>
     <h3>Detalhe</h3>
     <div id="report-list" class="list"></div>
@@ -132,11 +133,22 @@
   </section>
 </main>
 
+<!-- DETALHE DO DIA (fechamentos) -->
+<div id="day-modal" class="modal" hidden>
+  <div class="modal-box">
+    <h3 id="day-title">Dia</h3>
+    <div id="day-list" class="list"></div>
+    <button id="day-add" class="btn small" type="button">+ Adicionar refeição neste dia</button>
+    <button id="day-close" class="btn" type="button">Fechar</button>
+  </div>
+</div>
+
 <!-- CONFIRMAÇÃO DA REFEIÇÃO -->
 <div id="modal" class="modal" hidden>
   <div class="modal-box">
     <h3 id="modal-title">Confirmar refeição</h3>
     <p class="muted" id="modal-text"></p>
+    <label class="when">Data e hora <input type="datetime-local" id="modal-when"></label>
     <div id="modal-items" class="list"></div>
     <button id="modal-add" class="btn small" type="button">+ Adicionar item</button>
     <div class="big center"><span id="modal-total">0</span> <small>kcal</small></div>

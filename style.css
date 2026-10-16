@@ -94,3 +94,13 @@ textarea{resize:vertical}
 .install{display:block;margin:12px auto 0;background:none;border:1px dashed var(--line);color:var(--muted);border-radius:999px;padding:8px 14px;font-size:.85rem;cursor:pointer}
 .install:hover{color:inherit;border-color:var(--muted)}
 .install-tip{font-size:.85rem;color:var(--muted);text-align:center;margin:8px 0 0}
+
+.when{display:block;margin:6px 0 10px;font-size:.85rem;color:var(--muted)}
+.when input{width:100%;margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;font-size:1rem}
+.item.clickable{cursor:pointer}
+.item.clickable:hover{border-color:var(--muted)}
+.item .go{color:var(--muted);font-size:.75rem;margin-top:2px}
+#day-modal .item{margin-bottom:8px}
+#day-add{margin:8px 0}
+#day-close{width:100%}
+#btn-add-other{margin:8px 0}
