@@ -104,3 +104,8 @@ textarea{resize:vertical}
 #day-add{margin:8px 0}
 #day-close{width:100%}
 #btn-add-other{margin:8px 0}
+
+.day-compose{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;text-align:center}
+.day-compose h4{margin:0 0 8px;font-size:.95rem}
+.day-compose textarea{width:100%;margin:6px 0;padding:10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:inherit;font-size:1rem;resize:vertical}
+.mic.small{width:56px;height:56px;font-size:1.5rem}

@@ -274,8 +274,22 @@ async function loadToday() {
 const micBtn = $("#btn-mic");
 const micStatus = $("#mic-status");
 const mealText = $("#meal-text");
-const micDefault = micStatus.textContent;
-let mediaRec = null, chunks = [], stream = null, recTimer = null;
+let mediaRec = null, chunks = [], stream = null, recTimer = null, recCtx = null;
+
+// "contexto" = qual caixa de entrada está em uso (tela Hoje ou detalhe de um dia nos fechamentos)
+const mainCtx = {
+  mic: micBtn, status: micStatus, def: micStatus.textContent, text: mealText,
+  msg: $("#meal-msg"), btn: $("#btn-calc"), when: () => null,
+};
+const dayCtx = {
+  mic: $("#day-mic"), status: $("#day-mic-status"), def: $("#day-mic-status").textContent, text: $("#day-text"),
+  msg: $("#day-msg"), btn: $("#day-calc"),
+  when: () => {
+    const [y, m, d] = openDay.split("-").map(Number);
+    const n = new Date();
+    return new Date(y, m - 1, d, n.getHours(), n.getMinutes());
+  },
+};
 
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
@@ -286,49 +300,56 @@ function blobToBase64(blob) {
   });
 }
 
-async function startRec() {
-  setMsg($("#meal-msg"), "");
+async function startRec(ctx) {
+  setMsg(ctx.msg, "");
   if (!navigator.mediaDevices || !window.MediaRecorder) {
-    return setMsg($("#meal-msg"), "Gravação não suportada aqui. Digite abaixo.");
+    return setMsg(ctx.msg, "Gravação não suportada aqui. Digite no campo.");
   }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
   } catch (_) {
-    return setMsg($("#meal-msg"), "Permita o uso do microfone no navegador.");
+    return setMsg(ctx.msg, "Permita o uso do microfone no navegador.");
   }
   chunks = [];
+  recCtx = ctx;
   mediaRec = new MediaRecorder(stream);
   mediaRec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   mediaRec.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop());
     clearTimeout(recTimer);
-    micBtn.classList.remove("rec");
-    micStatus.textContent = micDefault;
+    ctx.mic.classList.remove("rec");
+    ctx.status.textContent = ctx.def;
     const blob = new Blob(chunks, { type: mediaRec.mimeType || "audio/webm" });
-    if (blob.size < 1500) return setMsg($("#meal-msg"), "Não ouvi nada. Tente de novo.");
+    if (blob.size < 1500) return setMsg(ctx.msg, "Não ouvi nada. Tente de novo.");
     const mime = (blob.type || "audio/webm").split(";")[0];
-    calculate({ audio: await blobToBase64(blob), mime });
+    calculate({ audio: await blobToBase64(blob), mime }, ctx);
   };
   mediaRec.start();
-  micBtn.classList.add("rec");
-  micStatus.textContent = "Gravando... fale o alimento e o peso. Toque de novo para terminar.";
+  ctx.mic.classList.add("rec");
+  ctx.status.textContent = "Gravando... fale o alimento e o peso. Toque de novo para terminar.";
   recTimer = setTimeout(() => mediaRec.state === "recording" && mediaRec.stop(), 60000);
 }
 
-micBtn.addEventListener("click", () => {
-  if (mediaRec && mediaRec.state === "recording") mediaRec.stop();
-  else startRec();
-});
+function wireMic(ctx) {
+  ctx.mic.addEventListener("click", () => {
+    if (mediaRec && mediaRec.state === "recording") {
+      if (recCtx === ctx) mediaRec.stop();
+    } else startRec(ctx);
+  });
+}
+wireMic(mainCtx);
+wireMic(dayCtx);
 
 // ---------- calcular calorias ----------
-$("#btn-calc").addEventListener("click", () => calculate());
+mainCtx.btn.addEventListener("click", () => calculate(null, mainCtx));
+dayCtx.btn.addEventListener("click", () => calculate(null, dayCtx));
 
-async function calculate(audioPayload) {
+async function calculate(audioPayload, ctx = mainCtx) {
   const isAudio = audioPayload && audioPayload.audio;
-  const text = mealText.value.trim();
-  const msg = $("#meal-msg");
+  const text = ctx.text.value.trim();
+  const msg = ctx.msg;
   if (!isAudio && text.length < 2) return setMsg(msg, "Fale ou digite o que você comeu.");
-  const btn = $("#btn-calc");
+  const btn = ctx.btn;
   btn.disabled = true;
   btn.textContent = "Calculando...";
   setMsg(msg, "");
@@ -343,7 +364,8 @@ async function calculate(audioPayload) {
       throw new Error(detail);
     }
     if (data?.error) throw new Error(data.error);
-    pending = { text: data.transcript || text, items: data.items, total: data.total_kcal };
+    const when = ctx.when();
+    pending = { text: data.transcript || text, items: data.items, total: data.total_kcal, eaten_at: when ? when.toISOString() : undefined };
     openModal();
   } catch (e) {
     setMsg(msg, e.message);
@@ -445,6 +467,7 @@ $("#modal-save").addEventListener("click", async () => {
   pending = null;
   $("#modal").hidden = true;
   mealText.value = "";
+  $("#day-text").value = "";
   setMsg($("#meal-msg"), edited ? "Refeição atualizada ✔" : "Refeição salva no diário ✔", true);
   refreshViews();
 });
@@ -591,6 +614,7 @@ function refreshViews() {
 
 async function showDay(key) {
   openDay = key;
+  $("#day-date").value = key;
   const [y, m, d] = key.split("-").map(Number);
   const from = new Date(y, m - 1, d);
   $("#day-title").textContent = `${DIAS[from.getDay()]}, ${pad(d)}/${pad(m)}/${y}`;
@@ -641,6 +665,9 @@ function newMealAt(date) {
   pending = { text: "", items: [{ name: "", grams: 100, kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, estimated: false }], total: 0, eaten_at: date.toISOString() };
   openModal();
 }
+$("#day-date").addEventListener("change", (e) => {
+  if (e.target.value) showDay(e.target.value);
+});
 $("#day-close").addEventListener("click", () => {
   openDay = null;
   $("#day-modal").hidden = true;
@@ -652,9 +679,8 @@ $("#day-add").addEventListener("click", () => {
   newMealAt(new Date(y, m - 1, d, now.getHours(), now.getMinutes()));
 });
 $("#btn-add-other").addEventListener("click", () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1); // começa em ontem; dá para mudar a data no campo
-  newMealAt(d);
+  const d = addDays(new Date(), -1); // começa em ontem; dá para trocar o dia no campo de data
+  showDay(dayKey(d));
 });
 
 // ---------- início ----------

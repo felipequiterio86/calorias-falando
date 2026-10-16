@@ -1,5 +1,5 @@
 // Service worker simples: guarda os arquivos do app para abrir rápido/instalar no celular.
-const CACHE = "calorias-v7";
+const CACHE = "calorias-v8";
 const FILES = ["./", "index.html", "style.css", "app.js", "config.js", "manifest.json", "icon.svg", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {

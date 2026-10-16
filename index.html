@@ -137,8 +137,17 @@
 <div id="day-modal" class="modal" hidden>
   <div class="modal-box">
     <h3 id="day-title">Dia</h3>
+    <label class="when">Dia <input type="date" id="day-date"></label>
     <div id="day-list" class="list"></div>
-    <button id="day-add" class="btn small" type="button">+ Adicionar refeição neste dia</button>
+    <div class="day-compose">
+      <h4>Adicionar refeição neste dia</h4>
+      <button id="day-mic" class="mic small" type="button" aria-label="Falar refeição">🎤</button>
+      <p class="center muted small-text" id="day-mic-status">Toque no microfone e fale, ou digite abaixo.</p>
+      <textarea id="day-text" rows="2" placeholder="Ex.: 150 gramas de arroz e 100 gramas de frango grelhado"></textarea>
+      <button id="day-calc" class="btn primary" type="button">Calcular calorias</button>
+      <p id="day-msg" class="msg"></p>
+    </div>
+    <button id="day-add" class="btn small" type="button">Adicionar manualmente (sem IA)</button>
     <button id="day-close" class="btn" type="button">Fechar</button>
   </div>
 </div>
